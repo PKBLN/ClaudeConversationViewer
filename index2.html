@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Conversations Export</title>
+  <style>
+      :root {
+          --bg: #0f172a;
+          --panel: #111827;
+          --muted: #94a3b8;
+          --text: #e5e7eb;
+          --accent: #38bdf8;
+          --border: #1f2937;
+          --code: #0b1020;
+          --warn: #f59e0b;
+      }
+      html, body { margin:0; padding:0; background:var(--bg); color:var(--text); font:16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
+      .container { max-width: none; width: 100%; margin: 32px auto; padding: 0 16px; }
+      header { margin-bottom: 24px; }
+      h1 { font-size: 1.6rem; margin: 0 0 4px 0; }
+      .hint { color: var(--muted); font-size: .95rem; }
+
+      .conv { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin: 16px 0 28px; box-shadow: 0 8px 20px rgba(0,0,0,.25); }
+      .conv > h2 { margin: 0 0 10px; font-size: 1.15rem; color: var(--accent); }
+      .kv { width: 100%; border-collapse: collapse; margin: 6px 0 12px; }
+      .kv th, .kv td { border: 1px solid var(--border); padding: 8px 10px; text-align: left; vertical-align: top; }
+      .kv th { color: var(--muted); font-weight: 600; background: rgba(255,255,255,.02); }
+      .kv td { background: rgba(255,255,255,.01); }
+
+      .section-title { margin: 14px 0 8px; font-size: 1.05rem; color: var(--muted); }
+      .msg { border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin: 10px 0; background: rgba(255,255,255,.02); }
+      .chatmsg { margin-left: 14px; }
+      .toolcontent { margin-top: 6px; }
+      .msg h3 { margin: 0 0 8px; font-size: 1rem; color: #a5b4fc; }
+
+      details { border: 1px dashed var(--border); border-radius: 8px; padding: 8px 10px; background: rgba(255,255,255,.015); margin: 8px 0; }
+      details > summary { cursor: pointer; color: var(--accent); user-select: none; }
+      details .inner { margin-top: 8px; }
+
+      /* Orange-Hervorhebung, wenn Tool Input Content vorhanden ist */
+      details.has-tool > summary { color: var(--warn); }
+      .msg.has-tool > summary { color: var(--warn); }
+
+      /* Anhang-/Zitaten-Symbole */
+      .attach-icon { margin-left: 6px; opacity: .9; filter: drop-shadow(0 1px 0 rgba(0,0,0,.35)); }
+      .cite-link { text-decoration: none; margin-left: 2px; }
+      .cite-link:hover { text-decoration: underline; }
+
+      .markdown { line-height: 1.6; }
+      .markdown pre, .markdown code { background: var(--code); border: 1px solid var(--border); border-radius: 6px; }
+      .markdown pre { padding: 10px; overflow: auto; }
+      .markdown code { padding: 2px 5px; }
+      .markdown h1,.markdown h2,.markdown h3 { color: #f8fafc; }
+      .markdown a { color: #93c5fd; }
+      /* Token-Styles für leichtes Syntax-Highlighting (müssen zu index2.js passen) */
+      .markdown .tag { color:#93c5fd; }
+      .markdown .attr { color:#f59e0b; }
+      .markdown .str { color:#86efac; }
+      .markdown .punc { color:#cbd5e1; }
+      .markdown .com { color:#94a3b8; }
+      .markdown .kw { color:#a78bfa; }
+      .markdown .lit { color:#fca5a5; }
+    </style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1 id="titleH1">Conversations Export</h1>
+    <div style="margin-top:10px; display:flex; gap:12px; align-items:center; flex-wrap: wrap;">
+      <div>
+        <label id="fileLabel" for="fileInput" style="display:inline-block;margin-right:8px;">JSON-Datei auswählen:</label>
+        <input id="fileInput" type="file" accept=".json,application/json" />
+      </div>
+      <div>
+        <label for="langSelect" class="hint" style="margin-right:6px;">Sprache:</label>
+        <select id="langSelect">
+          <option value="de">Deutsch</option>
+          <option value="en">English</option>
+        </select>
+      </div>
+    </div>
+  </header>
+  <div id="app">Bitte JSON-Datei auswählen.</div>
+</div>
+
+<script type="text/javascript" src="index2.js"></script>
+</body>
+</html>
