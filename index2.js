@@ -66,7 +66,11 @@ const I18N = {
     preview: 'Vorschau',
     showCode: 'Code anzeigen',
     copyCode: 'Code kopieren',
-    previewNotAvailable: 'Vorschau für diesen Inhaltstyp nicht verfügbar.'
+    previewNotAvailable: 'Vorschau für diesen Inhaltstyp nicht verfügbar.',
+    loadingConversations: 'Konversationen werden geladen...',
+    loadingMessages: 'Nachrichten werden geladen...',
+    messagesLazyHint: 'Nachrichten werden beim Öffnen geladen.',
+    noMessages: 'Keine Nachrichten vorhanden.'
   },
   en: {
     title: 'Conversations Export',
@@ -103,7 +107,11 @@ const I18N = {
     preview: 'Preview',
     showCode: 'Show code',
     copyCode: 'Copy code',
-    previewNotAvailable: 'Preview not available for this content type.'
+    previewNotAvailable: 'Preview not available for this content type.',
+    loadingConversations: 'Rendering conversations...',
+    loadingMessages: 'Rendering messages...',
+    messagesLazyHint: 'Messages render when you open the conversation.',
+    noMessages: 'No messages available.'
   }
 };
 function t(key){ const dict = I18N[gLang]||I18N.de; return dict[key] || key; }
@@ -112,6 +120,12 @@ function t(key){ const dict = I18N[gLang]||I18N.de; return dict[key] || key; }
 let gData = [];
 let gSortField = 'created_at'; // 'created_at' | 'updated_at'
 let gSortDir = 'desc'; // 'asc' | 'desc'
+let gRenderToken = 0;
+const CONVERSATION_BATCH_SIZE = 5;
+const MESSAGE_BATCH_SIZE = 5;
+const scheduleIdle = (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function')
+  ? (cb) => window.requestIdleCallback(cb)
+  : (cb) => setTimeout(() => cb({ timeRemaining: () => 0, didTimeout: true }), 0);
 
 function escapeHtml(str) {
   return String(str).replace(/[&<>"']/g, c => ({
@@ -784,8 +798,53 @@ function renderMessage(msg, idx) {
   return box;
 }
 
+function renderMessagesProgressively(messages, container, done) {
+  if (!container) return;
+  const arr = Array.isArray(messages) ? messages : [];
+  container.textContent = '';
+  if (!arr.length) {
+    const empty = document.createElement('div');
+    empty.className = 'hint';
+    empty.textContent = t('noMessages');
+    container.appendChild(empty);
+    if (done) done();
+    return;
+  }
+  const progress = document.createElement('div');
+  progress.className = 'hint';
+  progress.textContent = `${t('loadingMessages')} (0/${arr.length})`;
+  container.appendChild(progress);
+  const target = document.createElement('div');
+  container.appendChild(target);
+  let idx = 0;
+  function process() {
+    if (!container.isConnected) {
+      if (done) done();
+      return;
+    }
+    const frag = document.createDocumentFragment();
+    let count = 0;
+    while (idx < arr.length && count < MESSAGE_BATCH_SIZE) {
+      frag.appendChild(renderMessage(arr[idx], idx));
+      idx++;
+      count++;
+    }
+    target.appendChild(frag);
+    if (idx < arr.length) {
+      progress.textContent = `${t('loadingMessages')} (${idx}/${arr.length})`;
+      scheduleIdle(process);
+    } else {
+      progress.remove();
+      if (done) done();
+    }
+  }
+  scheduleIdle(process);
+}
+
 function render(conversations) {
   const app = document.getElementById('app');
+  if (!app) return;
+  const renderToken = ++gRenderToken;
   app.textContent = '';
   document.documentElement.lang = gLang;
   const controls = document.createElement('div');
@@ -835,7 +894,15 @@ function render(conversations) {
   toc.appendChild(tocList);
   app.appendChild(toc);
 
-  // Hilfsfunktion: Öffnet das <details>-Element zum aktuellen Hash (falls vorhanden)
+  const statusLine = document.createElement('div');
+  statusLine.className = 'hint';
+  statusLine.style.margin = '4px 0 12px';
+  statusLine.textContent = conversations.length ? t('loadingConversations') : '';
+  app.appendChild(statusLine);
+
+  const convContainer = document.createElement('div');
+  app.appendChild(convContainer);
+
   function openTargetFromHash(opts={scroll:true}) {
     try {
       const raw = (location.hash || '').replace(/^#/, '');
@@ -843,7 +910,6 @@ function render(conversations) {
       const id = decodeURIComponent(raw);
       const el = document.getElementById(id);
       if (!el) return;
-      // Falls die ID nicht direkt auf <details> liegt, versuche den nächsten <details>-Vorfahren
       const details = el.tagName && el.tagName.toLowerCase() === 'details' ? el : (el.closest ? el.closest('details') : null);
       if (details) {
         details.open = true;
@@ -876,7 +942,16 @@ function render(conversations) {
       return false;
     } catch (_) { return false; }
   }
-  conversations.forEach((conv, idx) => {
+
+  const total = conversations.length || 0;
+  if (!total) {
+    statusLine.textContent = '';
+    window.onhashchange = () => openTargetFromHash({scroll:true});
+    setTimeout(() => openTargetFromHash({scroll:false}), 0);
+    return;
+  }
+
+  function buildConversation(conv, idx) {
     const card = document.createElement('section');
     card.className = 'conv';
     const convId = `conv-${idx+1}-${slugify(conv && conv.name) || 'conversation'}`;
@@ -884,22 +959,59 @@ function render(conversations) {
     convDetails.id = convId;
     convDetails.open = false;
     const convSummary = document.createElement('summary');
-    const dateForToc = formatIsoLike(conv && conv[gSortField]);
-    convSummary.textContent = `Conversation #${idx+1}: ${safe(conv.name || '')}`;
+    convSummary.textContent = `Conversation #${idx+1}: ${safe(conv && conv.name || '')}`;
     convDetails.appendChild(convSummary);
     const convInner = document.createElement('div');
     convInner.className = 'inner';
 
+    const meta = [
+      ['Name', safe(conv && conv.name)],
+      ['Summary', `<div class="markdown">${md(conv && conv.summary)}</div>`],
+      ['Created At', safe(conv && conv.created_at)],
+      ['Updated At', safe(conv && conv.updated_at)],
+      ['Account UUID', conv && conv.account && conv.account.uuid ? safe(conv.account.uuid) : '']
+    ];
+    convInner.appendChild(kvTable(meta));
+
+    const title = document.createElement('div');
+    title.className = 'section-title';
+    title.textContent = t('chatMessages');
+    convInner.appendChild(title);
+
+    const msgContainer = document.createElement('div');
+    msgContainer.className = 'messages';
+    msgContainer.dataset.renderState = 'idle';
+    const lazyHint = document.createElement('div');
+    lazyHint.className = 'hint';
+    lazyHint.textContent = t('messagesLazyHint');
+    msgContainer.appendChild(lazyHint);
+    convInner.appendChild(msgContainer);
+
+    const ensureMessages = () => {
+      if (msgContainer.dataset.renderState === 'rendering' || msgContainer.dataset.renderState === 'rendered') return;
+      msgContainer.dataset.renderState = 'rendering';
+      renderMessagesProgressively((conv && conv.chat_messages) || [], msgContainer, () => {
+        msgContainer.dataset.renderState = 'rendered';
+      });
+    };
+
+    convDetails.addEventListener('toggle', () => {
+      if (convDetails.open) ensureMessages();
+    });
+
+    convDetails.appendChild(convInner);
+    card.appendChild(convDetails);
+
     const li = document.createElement('li');
     const a = document.createElement('a');
     a.href = `#${convId}`;
-    a.textContent = `${dateForToc ? '['+dateForToc+'] ' : ''}Conversation #${idx+1}: ${safe(conv.name || '')}`;
-    // Beim Klick den Ziel-Abschnitt (details) automatisch öffnen und hinscrollen
+    const dateForToc = formatIsoLike(conv && conv[gSortField]);
+    a.textContent = `${dateForToc ? '['+dateForToc+'] ' : ''}Conversation #${idx+1}: ${safe(conv && conv.name || '')}`;
     a.addEventListener('click', (ev) => {
       ev.preventDefault();
+      ensureMessages();
       const target = document.getElementById(convId);
       if (target) {
-        // Öffnen (falls <details>)
         if (target.tagName && target.tagName.toLowerCase() === 'details') {
           target.open = true;
           target.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -912,7 +1024,6 @@ function render(conversations) {
             target.scrollIntoView({ behavior: 'smooth', block: 'start' });
           }
         }
-        // Hash in URL aktualisieren, ohne Seitenreload
         history.pushState(null, '', `#${convId}`);
       }
     });
@@ -924,35 +1035,35 @@ function render(conversations) {
       span.title = t('hasArtifacts');
       li.appendChild(span);
     }
-    tocList.appendChild(li);
+    return { card, tocItem: li };
+  }
 
-    const meta = [
-      ['Name', safe(conv.name)],
-      ['Summary', `<div class="markdown">${md(conv.summary)}</div>`],
-      ['Created At', safe(conv.created_at)],
-      ['Updated At', safe(conv.updated_at)],
-      ['Account UUID', conv.account && conv.account.uuid ? safe(conv.account.uuid) : '']
-    ];
-    convInner.appendChild(kvTable(meta));
+  let idx = 0;
+  function renderBatch() {
+    if (renderToken !== gRenderToken) return;
+    const cardFrag = document.createDocumentFragment();
+    const tocFrag = document.createDocumentFragment();
+    let produced = 0;
+    while (idx < total && produced < CONVERSATION_BATCH_SIZE) {
+      const { card, tocItem } = buildConversation(conversations[idx], idx);
+      cardFrag.appendChild(card);
+      tocFrag.appendChild(tocItem);
+      idx++;
+      produced++;
+    }
+    convContainer.appendChild(cardFrag);
+    tocList.appendChild(tocFrag);
+    statusLine.textContent = `${t('loadingConversations')} (${idx}/${total})`;
+    if (idx < total) {
+      scheduleIdle(renderBatch);
+    } else {
+      statusLine.textContent = '';
+      setTimeout(() => openTargetFromHash({scroll:false}), 0);
+    }
+  }
 
-    const title = document.createElement('div');
-    title.className = 'section-title';
-    title.textContent = t('chatMessages');
-    convInner.appendChild(title);
-
-    (conv.chat_messages||[]).forEach((m, i) => {
-      convInner.appendChild(renderMessage(m, i));
-    });
-
-    convDetails.appendChild(convInner);
-    card.appendChild(convDetails);
-    app.appendChild(card);
-  });
-
-  // Hash-Navigation unterstützen (direkt aufrufen und auf Änderungen reagieren)
+  renderBatch();
   window.onhashchange = () => openTargetFromHash({scroll:true});
-  // Falls beim Rendern bereits ein Hash vorhanden ist, direkt öffnen (nach Layout)
-  setTimeout(() => openTargetFromHash({scroll:false}), 0);
 }
 
 // Datei aus dem File-Input einlesen und rendern
