@@ -1,6 +1,11 @@
 # ClaudeConversationViewer
 Renderer für `conversations.json` aus Claude.
 
+<img width="971" height="1071" alt="grafik" src="https://github.com/user-attachments/assets/9dbd98f1-efa5-4e5f-942c-382157819de4" />
+<img width="2048" height="1958" alt="grafik" src="https://github.com/user-attachments/assets/5c55114d-2dd5-4f77-956a-37b9f8cf8cdc" />
+
+
+
 ## Deutsch
 Wenn ihr wie ich von Anthropic gesperrt wurdet und euch per Art. 15 DSGVO eure Daten in Form einer `conversations.json` habt aushändigen lassen, dann könnte euch das hier weiterhelfen.
 
